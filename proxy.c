@@ -34,6 +34,12 @@ echo(int connfd) {
 }
 
 int main(int argc, char ** argv) {
+    char* a[MAXLINE],b[MAXLINE],c[MAXLINE],d[MAXLINE];
+    char* uri = "http://mbl.is/frettir";
+    parse_uri(uri,a,b,c);
+    printf("ADDRESS:%s\n",a);
+    printf("PATH:%s\n",b);
+    printf("PORT:%s\n",c);
 	int listenfd,
 	connfd,
 	port,
