@@ -27,19 +27,46 @@ echo(int connfd) {
 	rio_t rio;
 
 	Rio_readinitb( & rio, connfd);
+    char* req_type[MAXLINE];
+    char* path[MAXLINE];
+    char* http_version[MAXLINE];
+    char* server_name[MAXLINE];
+    char* firstline[MAXLINE];
+    char* secondline[MAXLINE];
+    char* thirdline[MAXLINE];
+    int beginning_request = 1;
+    int getting_host = 0;
 	while ((n = Rio_readlineb( & rio, buf, MAXLINE)) != 0) {
-		printf("server received %d bytes\n", n);
-		Rio_writen(connfd, buf, n);
+    if(beginning_request) {
+        strcpy(firstline,buf); 
+        sscanf(buf,"%s %s %s",req_type,path,http_version);
+        getting_host = 1;
+        beginning_request = 0;
+    }
+    else if(getting_host) {
+        strcpy(secondline,buf); 
+        sscanf(buf,"Host: %s",server_name);
+        getting_host = 0;
+    }
+    else {
+        rio_t newrio;
+        beginning_request = 1;
+        int clientfd = open_clientfd(server_name, 80);
+        rio_readinitb(&newrio, clientfd);
+        rio_writen(clientfd,firstline,strlen(firstline));
+        rio_writen(clientfd,secondline,strlen(secondline));
+        rio_writen(clientfd,buf,strlen(buf));
+        while(buf != NULL) { 
+            rio_readlineb(&newrio,buf,MAXLINE);
+            Rio_writen(connfd, buf, strlen(buf));
+            }
+        close(clientfd);
+        }
+        Rio_writen(connfd, buf, strlen(buf));
 	}
 }
 
 int main(int argc, char ** argv) {
-    char* a[MAXLINE],b[MAXLINE],c[MAXLINE],d[MAXLINE];
-    char* uri = "http://mbl.is/frettir";
-    parse_uri(uri,a,b,c);
-    printf("ADDRESS:%s\n",a);
-    printf("PATH:%s\n",b);
-    printf("PORT:%s\n",c);
 	int listenfd,
 	connfd,
 	port,
@@ -68,6 +95,11 @@ int main(int argc, char ** argv) {
 	exit(0);
 }
 
+int parse_request(char* req) {
+    
+
+
+}
 /*
  * parse_uri - URI parser
  *
