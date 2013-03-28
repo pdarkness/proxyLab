@@ -56,13 +56,19 @@ echo(int connfd) {
         rio_writen(clientfd,firstline,strlen(firstline));
         rio_writen(clientfd,secondline,strlen(secondline));
         rio_writen(clientfd,buf,strlen(buf));
-        while(buf != NULL) { 
-            rio_readlineb(&newrio,buf,MAXLINE);
-            Rio_writen(connfd, buf, strlen(buf));
-            }
+        int length = 0;
+        do
+        {
+        rio_readlineb(&newrio,buf,MAXLINE);
+        Rio_writen(connfd, buf, strlen(buf));
+        if( strstr(buf,"Content-Length: ") != NULL)
+            sscanf(buf,"Content-Length: %d",&length);
+        } while( strcmp(buf,"\r\n") ) ;
+        rio_readnb(&newrio,buf,length);
+        Rio_writen(connfd, buf, strlen(buf));
+        printf("JEBB %d\n", length);
         close(clientfd);
         }
-        Rio_writen(connfd, buf, strlen(buf));
 	}
 }
 
