@@ -37,6 +37,7 @@ echo(int connfd) {
     int beginning_request = 1;
     int getting_host = 0;
 	while ((n = Rio_readlineb( & rio, buf, MAXLINE)) != 0) {
+    printf("%s\n",buf);
     if(beginning_request) {
         strcpy(firstline,buf); 
         sscanf(buf,"%s %s %s",req_type,path,http_version);
@@ -64,9 +65,10 @@ echo(int connfd) {
         if( strstr(buf,"Content-Length: ") != NULL)
             sscanf(buf,"Content-Length: %d",&length);
         } while( strcmp(buf,"\r\n") ) ;
+        if(length > MAXLINE) 
+            length = MAXLINE;
         rio_readnb(&newrio,buf,length);
         Rio_writen(connfd, buf, strlen(buf));
-        printf("JEBB %d\n", length);
         close(clientfd);
         }
 	}
