@@ -26,48 +26,47 @@ void echo(int connfd) {
     char req_header[MAXLINE];
     char target_addr[MAXLINE];
     int port;
-	char address[MAXLINE];
 	while ((n = Rio_readlineb( & rio, buf, MAXLINE)) != 0) {
+        printf(buf);
         strcat(req_header,buf);
         if( strstr(buf,"HTTP/") != NULL)
         {
-            char path[MAXLINE];
+            char address[MAXLINE];
             sscanf(buf,"%*s %s %*s",address);
+            char path[MAXLINE];
             parse_uri(address,target_addr,path,&port);
         }
-        if( strcmp(buf,"\r\n") == 0)
+        else if( strcmp(buf,"\r\n") == 0)
         {
             rio_t remote_server;
             int clientfd = open_clientfd(target_addr, port);
             rio_readinitb(&remote_server, clientfd);
             rio_writen(clientfd,req_header,strlen(req_header));
-            int size = 0;
+            int content_len = 0;
             do {
                 rio_readlineb(&remote_server,buf,MAXLINE);
                 Rio_writen(connfd, buf, strlen(buf));
-                if( strstr(buf,"Content-Length: ") != NULL)
-                {
-                    sscanf(buf,"Content-Length: %d",&size);
-                }
+                sscanf(buf,"Content-Length: %d",&content_len);
             } while( strcmp(buf,"\r\n") ) ;
-        int length;
-        if (size > 0) { //not chunked
-            while (size > MAXLINE) {
-                length = rio_readnb(&remote_server, buf, MAXLINE);
-                rio_writen(connfd, buf, length);
-                size -= MAXLINE;
-            }
-            if (size > 0) { //remainder
-                length = rio_readnb(&remote_server, buf, size);
-                rio_writen(connfd, buf, length);
-            }
-        } else { //chunked
-            while ((length = rio_readnb(&remote_server, buf, MAXLINE)) > 0) 
-                  rio_writen(connfd, buf, length); 
+            int read_len;
+            if (content_len> 0) { //not chunked
+                while (content_len> MAXLINE) {
+                    read_len = rio_readnb(&remote_server, buf, MAXLINE);
+                    rio_writen(connfd, buf, read_len);
+                    content_len -= MAXLINE;
+                    }
+                if (content_len > 0) { //remainder
+                    read_len = rio_readnb(&remote_server, buf, content_len);
+                    rio_writen( connfd, buf, content_len );
+                    }
+                } 
+            else { //chunked
+                while ((read_len = Rio_readnb(&remote_server, buf, MAXLINE)) > 0)
+                    rio_writen(connfd, buf, read_len);
                }
             close(clientfd); 
+           }
         }
-    }
 }
 
 int main(int argc, char ** argv) {
