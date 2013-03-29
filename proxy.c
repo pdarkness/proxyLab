@@ -21,7 +21,7 @@ void format_log_entry(char * logstring, struct sockaddr_in * sockaddr, char * ur
 
 void echo(int connfd) {
 	size_t n;
-	char buf[MAXLINE];
+	void* buf[MAXLINE];
 	rio_t rio;
 	Rio_readinitb( & rio, connfd);
     char* req_data[MAXLINE];
@@ -32,9 +32,8 @@ void echo(int connfd) {
     int port;
     char* address[MAXLINE];
 	while ((n = Rio_readlineb( & rio, buf, MAXLINE)) != 0) {
+        strcat(req_data,buf);
         printf(buf);
-        if( strstr(buf,"Accept-Encoding") == NULL)
-            strcat(req_data,buf);
         if( strstr(buf,"HTTP") != NULL)
         {
             char* a[MAXLINE];
@@ -48,24 +47,30 @@ void echo(int connfd) {
             int clientfd = open_clientfd(target_addr, port);
             rio_readinitb(&remote_server, clientfd);
             rio_writen(clientfd,req_data,strlen(req_data));
-            int length = 0;
+            int size = 0;
             do {
                 rio_readlineb(&remote_server,buf,MAXLINE);
                 Rio_writen(connfd, buf, strlen(buf));
                 if( strstr(buf,"Content-Length: ") != NULL)
                 {
-                    sscanf(buf,"Content-Length: %d",&length);
+                    sscanf(buf,"Content-Length: %d",&size);
                 }
             } while( strcmp(buf,"\r\n") ) ;
-            do {
-            int size = length;
-            if(length > MAXLINE)
-               size = MAXLINE; 
-            printf("size: %d\n",size);
-            rio_readnb(&remote_server,buf,size);
-            Rio_writen(connfd, buf, strlen(buf));
-            length -= size;
-            } while(length != 0);
+        int length;
+        if (size > 0) {
+            while (size > MAXLINE) {
+                length = rio_readnb(&remote_server, buf, MAXLINE);
+                rio_writen(connfd, buf, length);
+                size -= MAXLINE;
+            }
+            if (size > 0) {
+                length = rio_readnb(&remote_server, buf, size);
+                rio_writen(connfd, buf, length);
+            }
+        } else {
+            while ((length = rio_readnb(&remote_server, buf, MAXLINE)) > 0) 
+                  rio_writen(connfd, buf, length); 
+               }
             close(clientfd); 
         }
     }
