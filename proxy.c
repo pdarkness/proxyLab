@@ -10,7 +10,7 @@
  * function that describes what that function does.
  */
 
- # include "csapp.h"
+# include "csapp.h"
 
 /*
  * Function prototypes
@@ -19,38 +19,37 @@ int parse_uri(char * uri, char * target_addr, char * path, int * port);
 void format_log_entry(char * logstring, struct sockaddr_in * sockaddr, char * uri, int size);
 
 void echo(int connfd) {
-	size_t n;
-	char buf[MAXLINE];
-	rio_t rio;
-	Rio_readinitb( & rio, connfd);
+    size_t n;
+    char buf[MAXLINE];
+    rio_t rio;
+    Rio_readinitb( & rio, connfd);
     char req_header[MAXLINE];
     char target_addr[MAXLINE];
     int port;
-	while ((n = Rio_readlineb( & rio, buf, MAXLINE)) != 0) {
+    while ((n = Rio_readlineb( & rio, buf, MAXLINE)) != 0) {
         printf(buf);
-        strcat(req_header,buf);
-        if( strstr(buf,"HTTP/") != NULL)
-        {
+        strcat(req_header, buf);
+        if( strstr(buf, "HTTP/") != NULL) {
             char address[MAXLINE];
-            sscanf(buf,"%*s %s %*s",address);
+            sscanf(buf, "%*s %s %*s", address);
             char path[MAXLINE];
-            parse_uri(address,target_addr,path,&port);
-        }
-        else if( strcmp(buf,"\r\n") == 0)
-        {
+            parse_uri(address, target_addr, path, &port);
+            }
+        else if( strcmp(buf, "\r\n") == 0) {
             rio_t remote_server;
             int clientfd = open_clientfd(target_addr, port);
             rio_readinitb(&remote_server, clientfd);
-            rio_writen(clientfd,req_header,strlen(req_header));
+            rio_writen(clientfd, req_header, strlen(req_header));
             int content_len = 0;
             do {
-                rio_readlineb(&remote_server,buf,MAXLINE);
+                rio_readlineb(&remote_server, buf, MAXLINE);
                 Rio_writen(connfd, buf, strlen(buf));
-                sscanf(buf,"Content-Length: %d",&content_len);
-            } while( strcmp(buf,"\r\n") ) ;
+                sscanf(buf, "Content-Length: %d", &content_len);
+                }
+            while( strcmp(buf, "\r\n") ) ;
             int read_len;
-            if (content_len> 0) { //not chunked
-                while (content_len> MAXLINE) {
+            if (content_len > 0) { //not chunked
+                while (content_len > MAXLINE) {
                     read_len = rio_readnb(&remote_server, buf, MAXLINE);
                     rio_writen(connfd, buf, read_len);
                     content_len -= MAXLINE;
@@ -59,44 +58,44 @@ void echo(int connfd) {
                     read_len = rio_readnb(&remote_server, buf, content_len);
                     rio_writen( connfd, buf, content_len );
                     }
-                } 
+                }
             else { //chunked
                 while ((read_len = Rio_readnb(&remote_server, buf, MAXLINE)) > 0)
                     rio_writen(connfd, buf, read_len);
-               }
-            close(clientfd); 
-           }
+                }
+            close(clientfd);
+            }
         }
-}
+    }
 
 int main(int argc, char ** argv) {
-	int listenfd,
-	connfd,
-	port;
-	unsigned int  clientlen;
-	struct sockaddr_in clientaddr;
-	struct hostent * hp;
-	char * haddrp;
-	if (argc != 2) {
-		fprintf(stderr, "usage: %s <port>\n", argv[0]);
-		exit(0);
-	}
-	port = atoi(argv[1]);
-	listenfd = Open_listenfd(port);
-	while (1) {
-		clientlen = sizeof(clientaddr);
-		connfd = Accept(listenfd, (SA * ) & clientaddr,  &clientlen);
+    int listenfd,
+        connfd,
+        port;
+    unsigned int  clientlen;
+    struct sockaddr_in clientaddr;
+    struct hostent * hp;
+    char * haddrp;
+    if (argc != 2) {
+        fprintf(stderr, "usage: %s <port>\n", argv[0]);
+        exit(0);
+        }
+    port = atoi(argv[1]);
+    listenfd = Open_listenfd(port);
+    while (1) {
+        clientlen = sizeof(clientaddr);
+        connfd = Accept(listenfd, (SA * ) & clientaddr,  &clientlen);
 
-		/* Determine the domain name and IP address of the client */
-		hp = Gethostbyaddr((const char * ) & clientaddr.sin_addr.s_addr,
-				sizeof(clientaddr.sin_addr.s_addr), AF_INET);
-		haddrp = inet_ntoa(clientaddr.sin_addr);
-		printf("server connected to %s (%s)\n", hp->h_name, haddrp);
-		echo(connfd);
-		Close(connfd);
-	}
-	exit(0);
-}
+        /* Determine the domain name and IP address of the client */
+        hp = Gethostbyaddr((const char * ) & clientaddr.sin_addr.s_addr,
+                           sizeof(clientaddr.sin_addr.s_addr), AF_INET);
+        haddrp = inet_ntoa(clientaddr.sin_addr);
+        printf("server connected to %s (%s)\n", hp->h_name, haddrp);
+        echo(connfd);
+        Close(connfd);
+        }
+    exit(0);
+    }
 
 /*
  * parse_uri - URI parser
@@ -107,40 +106,41 @@ int main(int argc, char ** argv) {
  * bytes. Return -1 if there are any problems.
  */
 int parse_uri(char * uri, char * hostname, char * pathname, int * port) {
-	char * hostbegin;
-	char * hostend;
-	char * pathbegin;
-	int len;
+    char * hostbegin;
+    char * hostend;
+    char * pathbegin;
+    int len;
 
-	if (strncasecmp(uri, "http://", 7) != 0) {
-		hostname[0] = '\0';
-		return -1;
-	}
+    if (strncasecmp(uri, "http://", 7) != 0) {
+        hostname[0] = '\0';
+        return -1;
+        }
 
-	/* Extract the host name */
-	hostbegin = uri + 7;
-	hostend = strpbrk(hostbegin, " :/\r\n\0");
-	len = hostend - hostbegin;
-	strncpy(hostname, hostbegin, len);
-	hostname[len] = '\0';
+    /* Extract the host name */
+    hostbegin = uri + 7;
+    hostend = strpbrk(hostbegin, " :/\r\n\0");
+    len = hostend - hostbegin;
+    strncpy(hostname, hostbegin, len);
+    hostname[len] = '\0';
 
-	/* Extract the port number */
-	 * port = 80;
-	/* default */
-	if ( * hostend == ':')
-		 * port = atoi(hostend + 1);
+    /* Extract the port number */
+    * port = 80;
+    /* default */
+    if ( * hostend == ':')
+        * port = atoi(hostend + 1);
 
-	/* Extract the path */
-	pathbegin = strchr(hostbegin, '/');
-	if (pathbegin == NULL) {
-		pathname[0] = '\0';
-	} else {
-		pathbegin++;
-		strcpy(pathname, pathbegin);
-	}
+    /* Extract the path */
+    pathbegin = strchr(hostbegin, '/');
+    if (pathbegin == NULL) {
+        pathname[0] = '\0';
+        }
+    else {
+        pathbegin++;
+        strcpy(pathname, pathbegin);
+        }
 
-	return 0;
-}
+    return 0;
+    }
 
 /*
  * format_log_entry - Create a formatted log entry in logstring.
@@ -150,31 +150,31 @@ int parse_uri(char * uri, char * hostname, char * pathname, int * port) {
  * of the response from the server (size).
  */
 void format_log_entry(char * logstring, struct sockaddr_in * sockaddr,
-	char * uri, int size) {
-	time_t now;
-	char time_str[MAXLINE];
-	unsigned long host;
-	unsigned char a,
-	b,
-	c,
-	d;
+                      char * uri, int size) {
+    time_t now;
+    char time_str[MAXLINE];
+    unsigned long host;
+    unsigned char a,
+             b,
+             c,
+             d;
 
-	/* Get a formatted time string */
-	now = time(NULL);
-	strftime(time_str, MAXLINE, "%a %d %b %Y %H:%M:%S %Z", localtime( & now));
+    /* Get a formatted time string */
+    now = time(NULL);
+    strftime(time_str, MAXLINE, "%a %d %b %Y %H:%M:%S %Z", localtime( & now));
 
-	/*
-	 * Convert the IP address in network byte order to dotted decimal
-	 * form. Note that we could have used inet_ntoa, but chose not to
-	 * because inet_ntoa is a Class 3 thread unsafe function that
-	 * returns a pointer to a static variable (Ch 13, CS:APP).
-	 */
-	host = ntohl(sockaddr->sin_addr.s_addr);
-	a = host >> 24;
-	b = (host >> 16) & 0xff;
-	c = (host >> 8) & 0xff;
-	d = host & 0xff;
+    /*
+     * Convert the IP address in network byte order to dotted decimal
+     * form. Note that we could have used inet_ntoa, but chose not to
+     * because inet_ntoa is a Class 3 thread unsafe function that
+     * returns a pointer to a static variable (Ch 13, CS:APP).
+     */
+    host = ntohl(sockaddr->sin_addr.s_addr);
+    a = host >> 24;
+    b = (host >> 16) & 0xff;
+    c = (host >> 8) & 0xff;
+    d = host & 0xff;
 
-	/* Return the formatted log entry string */
-	sprintf(logstring, "%s: %d.%d.%d.%d %s", time_str, a, b, c, d, uri);
-}
+    /* Return the formatted log entry string */
+    sprintf(logstring, "%s: %d.%d.%d.%d %s", time_str, a, b, c, d, uri);
+    }
