@@ -20,55 +20,50 @@ void format_log_entry(char * logstring, struct sockaddr_in * sockaddr, char * ur
 
 void echo(int connfd) {
 	size_t n;
-	void* buf[MAXLINE];
+	char buf[MAXLINE];
 	rio_t rio;
 	Rio_readinitb( & rio, connfd);
-    	char* req_data[MAXLINE];
-    	strcpy((char *)req_data,"");
-    	char* target_addr[MAXLINE];
-    	char* path[MAXLINE];
-    	char* host[MAXLINE];
-    	int port;
-	char* address[MAXLINE];
+    char req_header[MAXLINE];
+    char target_addr[MAXLINE];
+    int port;
+	char address[MAXLINE];
 	while ((n = Rio_readlineb( & rio, buf, MAXLINE)) != 0) {
-        strcat((char *)req_data,(char *)buf);
-        printf((char *)buf);
-        if( strstr((char *)buf,"HTTP") != NULL)
+        strcat(req_header,buf);
+        if( strstr(buf,"HTTP/") != NULL)
         {
-            char* a[MAXLINE];
-            char* b[MAXLINE];
-            sscanf((char *)buf,"%s %s %s",(char *)a,&address,b);
-            parse_uri((char *)address,(char *)target_addr,(char *)path,&port);
+            char path[MAXLINE];
+            sscanf(buf,"%*s %s %*s",address);
+            parse_uri(address,target_addr,path,&port);
         }
-        if( strcmp((char *)buf,"\r\n") == 0)
+        if( strcmp(buf,"\r\n") == 0)
         {
             rio_t remote_server;
-            int clientfd = open_clientfd((char *)target_addr, port);
+            int clientfd = open_clientfd(target_addr, port);
             rio_readinitb(&remote_server, clientfd);
-            rio_writen(clientfd,(char *)req_data,strlen((char *)req_data));
+            rio_writen(clientfd,req_header,strlen(req_header));
             int size = 0;
             do {
                 rio_readlineb(&remote_server,buf,MAXLINE);
-                Rio_writen(connfd, (char *)buf, strlen((char *)buf));
-                if( strstr((char *)buf,"Content-Length: ") != NULL)
+                Rio_writen(connfd, buf, strlen(buf));
+                if( strstr(buf,"Content-Length: ") != NULL)
                 {
-                    sscanf((char *)buf,"Content-Length: %d",&size);
+                    sscanf(buf,"Content-Length: %d",&size);
                 }
-            } while( strcmp((char *)buf,"\r\n") ) ;
+            } while( strcmp(buf,"\r\n") ) ;
         int length;
-        if (size > 0) {
+        if (size > 0) { //not chunked
             while (size > MAXLINE) {
-                length = rio_readnb(&remote_server, (char *)buf, MAXLINE);
-                rio_writen(connfd, (char *)buf, length);
+                length = rio_readnb(&remote_server, buf, MAXLINE);
+                rio_writen(connfd, buf, length);
                 size -= MAXLINE;
             }
-            if (size > 0) {
-                length = rio_readnb(&remote_server, (char *)buf, size);
-                rio_writen(connfd, (char *)buf, length);
+            if (size > 0) { //remainder
+                length = rio_readnb(&remote_server, buf, size);
+                rio_writen(connfd, buf, length);
             }
-        } else {
-            while ((length = rio_readnb(&remote_server, (char *)buf, MAXLINE)) > 0) 
-                  rio_writen(connfd, (char *)buf, length); 
+        } else { //chunked
+            while ((length = rio_readnb(&remote_server, buf, MAXLINE)) > 0) 
+                  rio_writen(connfd, buf, length); 
                }
             close(clientfd); 
         }
@@ -78,8 +73,8 @@ void echo(int connfd) {
 int main(int argc, char ** argv) {
 	int listenfd,
 	connfd,
-	port,
-	clientlen;
+	port;
+	unsigned int  clientlen;
 	struct sockaddr_in clientaddr;
 	struct hostent * hp;
 	char * haddrp;
