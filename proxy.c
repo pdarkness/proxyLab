@@ -1,4 +1,4 @@
-/*
+/*(
  * proxy.c - CS:APP Web proxy
  *
  * TEAM MEMBERS:
@@ -18,60 +18,57 @@
 int parse_uri(char * uri, char * target_addr, char * path, int * port);
 void format_log_entry(char * logstring, struct sockaddr_in * sockaddr, char * uri, int size);
 
-/*
- * main - Main routine for the proxy program
- */
-echo(int connfd) {
+
+void echo(int connfd) {
 	size_t n;
 	char buf[MAXLINE];
 	rio_t rio;
-
 	Rio_readinitb( & rio, connfd);
-    char* req_type[MAXLINE];
+    char* req_data[MAXLINE];
+    strcpy(req_data,"");
+    char* target_addr[MAXLINE];
     char* path[MAXLINE];
-    char* http_version[MAXLINE];
-    char* server_name[MAXLINE];
-    char* firstline[MAXLINE];
-    char* secondline[MAXLINE];
-    char* thirdline[MAXLINE];
-    int beginning_request = 1;
-    int getting_host = 0;
+    char* host[MAXLINE];
+    int port;
+    char* address[MAXLINE];
 	while ((n = Rio_readlineb( & rio, buf, MAXLINE)) != 0) {
-    printf("%s\n",buf);
-    if(beginning_request) {
-        strcpy(firstline,buf); 
-        sscanf(buf,"%s %s %s",req_type,path,http_version);
-        getting_host = 1;
-        beginning_request = 0;
-    }
-    else if(getting_host) {
-        strcpy(secondline,buf); 
-        sscanf(buf,"Host: %s",server_name);
-        getting_host = 0;
-    }
-    else {
-        rio_t newrio;
-        beginning_request = 1;
-        int clientfd = open_clientfd(server_name, 80);
-        rio_readinitb(&newrio, clientfd);
-        rio_writen(clientfd,firstline,strlen(firstline));
-        rio_writen(clientfd,secondline,strlen(secondline));
-        rio_writen(clientfd,buf,strlen(buf));
-        int length = 0;
-        do
+        printf(buf);
+        if( strstr(buf,"Accept-Encoding") == NULL)
+            strcat(req_data,buf);
+        if( strstr(buf,"HTTP") != NULL)
         {
-        rio_readlineb(&newrio,buf,MAXLINE);
-        Rio_writen(connfd, buf, strlen(buf));
-        if( strstr(buf,"Content-Length: ") != NULL)
-            sscanf(buf,"Content-Length: %d",&length);
-        } while( strcmp(buf,"\r\n") ) ;
-        if(length > MAXLINE) 
-            length = MAXLINE;
-        rio_readnb(&newrio,buf,length);
-        Rio_writen(connfd, buf, strlen(buf));
-        close(clientfd);
+            char* a[MAXLINE];
+            char* b[MAXLINE];
+            sscanf(buf,"%s %s %s",a,&address,b);
+            parse_uri(address,&target_addr,&path,&port);
         }
-	}
+        if( strcmp(buf,"\r\n") == 0)
+        {
+            rio_t remote_server;
+            int clientfd = open_clientfd(target_addr, port);
+            rio_readinitb(&remote_server, clientfd);
+            rio_writen(clientfd,req_data,strlen(req_data));
+            int length = 0;
+            do {
+                rio_readlineb(&remote_server,buf,MAXLINE);
+                Rio_writen(connfd, buf, strlen(buf));
+                if( strstr(buf,"Content-Length: ") != NULL)
+                {
+                    sscanf(buf,"Content-Length: %d",&length);
+                }
+            } while( strcmp(buf,"\r\n") ) ;
+            do {
+            int size = length;
+            if(length > MAXLINE)
+               size = MAXLINE; 
+            printf("size: %d\n",size);
+            rio_readnb(&remote_server,buf,size);
+            Rio_writen(connfd, buf, strlen(buf));
+            length -= size;
+            } while(length != 0);
+            close(clientfd); 
+        }
+    }
 }
 
 int main(int argc, char ** argv) {
@@ -103,11 +100,6 @@ int main(int argc, char ** argv) {
 	exit(0);
 }
 
-int parse_request(char* req) {
-    
-
-
-}
 /*
  * parse_uri - URI parser
  *
