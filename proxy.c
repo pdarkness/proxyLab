@@ -17,6 +17,7 @@ sem_t mutex;
  */
 int parse_uri(char * uri, char * target_addr, char * path, int * port);
 void format_log_entry(char * logstring, struct sockaddr_in * sockaddr, char * uri, int size);
+void log_to_file(char * log_entry);
 
 int open_clientfd_ts(char *hostname, int port) {
     int clientfd;
@@ -49,17 +50,21 @@ void echo(int connfd) {
     rio_t rio;
     Rio_readinitb( & rio, connfd);
     char* req_header = malloc(sizeof(char) * MAXLINE);
-    char* target_addr  = malloc(sizeof(char) * MAXLINE);
+    struct sockaddr_in * target_addr  = malloc(sizeof(char) * MAXLINE);
     int* port = malloc(sizeof(int));
-    int hostfound = 0;
+    int hostfound = 0;    
+    char path[MAXLINE];
+    char address[MAXLINE];
+    char log_entry[MAXLINE];
+
     while ( (n = Rio_readlineb( & rio, buf, MAXLINE)) != 0) {
         strcat(req_header, buf);
         //sscanf(buf, "Host: %s", target_addr);
         if( strstr(buf, "HTTP/") != NULL) {
             printf(buf);
-            char address[MAXLINE];
+            //char address[MAXLINE];
             sscanf(buf, "%*s %s %*s", address);
-            char path[MAXLINE];
+            //char path[MAXLINE];
             parse_uri(address, target_addr, path, port);
             }
         else if( strcmp(buf, "\r\n") == 0) {
@@ -91,7 +96,9 @@ void echo(int connfd) {
                 while ((*read_len = Rio_readnb(&remote_server, buf, MAXLINE)) > 0)
                     Rio_writen(connfd, buf, *read_len);
                 }
-            break;
+            	format_log_entry(log_entry, target_addr, path, *content_len );
+		log_to_file(log_entry);
+		break;
             }
         }
     }
@@ -174,6 +181,23 @@ int parse_uri(char * uri, char * hostname, char * pathname, int * port) {
     return 0;
     }
 
+void log_to_file(char * log_entry)
+{
+        FILE *ofp;
+        char *mode = "a";
+        char outputFilename[] = "proxy.log";
+
+        ofp = fopen(outputFilename, mode);
+        if (ofp == NULL)
+        {
+                fprintf(stderr, "Can't open output file %s!\n", outputFilename);
+                exit(1);
+        }
+        fprintf(ofp, "%s\n", log_entry);
+        fclose(ofp);
+}
+
+
 /*
  * format_log_entry - Create a formatted log entry in logstring.
  *
@@ -181,8 +205,7 @@ int parse_uri(char * uri, char * hostname, char * pathname, int * port) {
  * (sockaddr), the URI from the request (uri), and the size in bytes
  * of the response from the server (size).
  */
-void format_log_entry(char * logstring, struct sockaddr_in * sockaddr,
-                      char * uri, int size) {
+void format_log_entry(char * logstring, struct sockaddr_in * sockaddr, char * uri, int size) {
     time_t now;
     char time_str[MAXLINE];
     unsigned long host;
