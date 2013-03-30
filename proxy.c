@@ -11,7 +11,7 @@
  */
 
 # include "csapp.h"
-
+sem_t mutex;
 /*
  * Function prototypes
  */
@@ -21,17 +21,20 @@ void format_log_entry(char * logstring, struct sockaddr_in * sockaddr, char * ur
 int open_clientfd_ts(char *hostname, int port) {
     int clientfd;
     struct hostent *hp;
+    struct hostent *priv_hp;
     struct sockaddr_in serveraddr;
     if ((clientfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
         return -1; /* Check errno for cause of error */
+    P(&mutex);
     /* Fill in the server.s IP address and port */
     if ((hp = gethostbyname(hostname)) == NULL)
         return -2; /* Check h_errno for cause of error */
-
+    memcpy(&priv_hp,&hp,sizeof(hp));
+    V(&mutex);
     bzero((char *) &serveraddr, sizeof(serveraddr));
     serveraddr.sin_family = AF_INET;
-    bcopy((char *)hp->h_addr_list[0],
-          (char *)&serveraddr.sin_addr.s_addr, hp->h_length);
+    bcopy((char *)priv_hp->h_addr_list[0],
+          (char *)&serveraddr.sin_addr.s_addr, priv_hp->h_length);
     serveraddr.sin_port = htons(port);
     /* Establish a connection with the server */
     if (connect(clientfd, (SA *) &serveraddr, sizeof(serveraddr)) < 0)
@@ -48,9 +51,10 @@ void echo(int connfd) {
     char target_addr[MAXLINE];
     int port;
     while ((n = Rio_readlineb( & rio, buf, MAXLINE)) != 0) {
-        printf(buf);
         strcat(req_header, buf);
+        sscanf(buf, "Host: %s", target_addr);
         if( strstr(buf, "HTTP/") != NULL) {
+            printf(buf);
             char address[MAXLINE];
             sscanf(buf, "%*s %s %*s", address);
             char path[MAXLINE];
@@ -91,6 +95,7 @@ void echo(int connfd) {
     }
 
 int main(int argc, char ** argv) {
+    sem_init(&mutex,0,1);
     int listenfd,
         connfd,
         port;
@@ -113,7 +118,7 @@ int main(int argc, char ** argv) {
         hp = Gethostbyaddr((const char * ) & clientaddr.sin_addr.s_addr,
                            sizeof(clientaddr.sin_addr.s_addr), AF_INET);
         haddrp = inet_ntoa(clientaddr.sin_addr);
-        printf("server connected to %s (%s)\n", hp->h_name, haddrp);
+        //printf("server connected to %s (%s)\n", hp->h_name, haddrp);
 	Pthread_create(&tid, NULL, (void *)echo, (void *)connfd);
         //Close(connfd);
         }
