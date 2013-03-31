@@ -45,27 +45,27 @@ int open_clientfd_ts(char *hostname, int port) {
 
 void echo(int* arg) {
     int connfd = *arg; 
-    free(arg);
+    Free(arg);
     size_t n;
-    char* buf = malloc( sizeof(char)*MAXLINE);
     rio_t rio;
-    Rio_readinitb( & rio, connfd);
-    char* req_header = malloc(sizeof(char) * MAXLINE);
-    struct sockaddr_in * target_addr  = malloc(sizeof(char) * MAXLINE);
     int port;
-    int hostfound = 0;    
     char path[MAXLINE];
     char address[MAXLINE];
     char log_entry[MAXLINE];
-
+    char buf[MAXLINE];// = malloc( sizeof(char)*MAXLINE);
+    char req_header[MAXLINE];// = malloc(sizeof(char) * MAXLINE);
+    struct sockaddr_in target_addr[MAXLINE];
+    strcpy(req_header,"");
+    Rio_readinitb( & rio, connfd);
     while ( (n = Rio_readlineb( & rio, buf, MAXLINE)) != 0) {
         strcat(req_header, buf);
         if( strstr(buf, "HTTP/") != NULL ) {
-            if( strstr(buf,"GET") == NULL ) {
-                printf("FAIL\n");
+            if( (strstr(buf, "GET") == NULL)  && printf("jebb\n")  ) {
+                printf("NOT A GET REQUEST\n");
+                printf(buf);
                 break;
-            }
-            printf(buf);
+                }
+            //printf(buf);
             sscanf(buf, "%*s %s %*s", address);
             parse_uri(address, target_addr, path, &port);
             }
@@ -73,48 +73,47 @@ void echo(int* arg) {
             rio_t remote_server;
             int clientfd;
             if( (clientfd = open_clientfd_ts(target_addr, port) ) < 0) {
-                printf("FAIL\n");
+                printf("Open client  fail\n");
+                printf("%s:%d\n",target_addr,port);
                 break;
             }
             Rio_readinitb(&remote_server, clientfd);
             Rio_writen(clientfd, req_header, strlen(req_header));
-            int* content_len = malloc( sizeof(int) );
-            *content_len = 0;
+            int content_len = -1;
+            int chunked = 0;
             do {
                 Rio_readlineb(&remote_server, buf, MAXLINE);
                 Rio_writen(connfd, buf, strlen(buf));
-                sscanf(buf, "Content-Length: %d", content_len);
-                printf(buf);
+                sscanf(buf, "Content-Length: %d", &content_len);
+                if( strstr(buf,"chunked"))
+                    chunked  =1;
                 } while( strcmp(buf, "\r\n") ) ;
-            int* read_len = malloc( sizeof(int) );
-            if (*content_len > 0) { //not chunked
-                while (*content_len > MAXLINE) {
-                    *read_len = Rio_readnb(&remote_server, buf, MAXLINE);
-                    Rio_writen(connfd, buf, *read_len);
-                    *content_len -= MAXLINE;
+            int read_len = 0;
+            if (content_len > -1) { //not chunked
+                while (content_len > MAXLINE) {
+                    read_len = Rio_readnb(&remote_server, buf, MAXLINE);
+                    Rio_writen(connfd, buf, read_len);
+                    content_len -= MAXLINE;
                     }
-                if (*content_len > 0) { //remainder
-                    *read_len = Rio_readnb(&remote_server, buf, *content_len);
-                    Rio_writen( connfd, buf, *content_len );
+                if (content_len > 0) { //remainder
+                    read_len = Rio_readnb(&remote_server, buf, content_len);
+                    Rio_writen( connfd, buf, content_len );
                     }
                 }
-            else { //chunked
-                while ((*read_len = Rio_readlineb(&remote_server, buf, MAXLINE)) > 0)
+            else if(chunked) { //chunked
+                while ((read_len = Rio_readlineb(&remote_server, buf, MAXLINE)) > 0)
                         {
-                        Rio_writen(connfd, buf, *read_len);
-                        if( !strcmp(buf,"0\r\n")) break;
+                            Rio_writen(connfd, buf, read_len);
+                            if( !strcmp(buf,"0\r\n")) break;
                         }
                 }
             Close(clientfd);
-            format_log_entry(log_entry, target_addr, path, *content_len );
+            format_log_entry(log_entry, target_addr, path, content_len );
             log_to_file(log_entry);
             break;
             }
         }
         Close(connfd);
-        Free(buf);
-        //Free(port);
-        //Free(req_header);
     }
 
 int main(int argc, char ** argv) {
@@ -144,7 +143,7 @@ int main(int argc, char ** argv) {
         haddrp = inet_ntoa(clientaddr.sin_addr);
         //printf("server connected to %s (%s)\n", hp->h_name, haddrp);
         echo(connfd);
-	    //Pthread_create(&tid, NULL, (void *)echo, (void *)connfd);
+        //Pthread_create(&tid, NULL, (void *)echo, (void *)connfd);
         }
     printf("done!\n");
     exit(0);
