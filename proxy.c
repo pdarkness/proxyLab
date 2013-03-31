@@ -19,14 +19,6 @@ int parse_uri(char * uri, char * target_addr, char * path, int * port);
 void format_log_entry(char * logstring, struct sockaddr_in * sockaddr, char * uri, int size);
 void log_to_file(char * log_entry);
 
-int count_spaces(char* s) {
-  int count = 0;
-  int i;
-  for (i = 0; i < strlen(s);i++)
-    if (s[i] == ' ') count++;
-  return count;
-}
-
 int open_clientfd_ts(char *hostname, int port) {
     int clientfd;
     struct hostent *hp;
@@ -55,12 +47,12 @@ void echo(int* arg) {
     int connfd = *arg; 
     free(arg);
     size_t n;
-    char* buf = malloc(sizeof(char) * MAXLINE); 
+    char* buf = malloc( sizeof(char)*MAXLINE);
     rio_t rio;
     Rio_readinitb( & rio, connfd);
     char* req_header = malloc(sizeof(char) * MAXLINE);
     struct sockaddr_in * target_addr  = malloc(sizeof(char) * MAXLINE);
-    int* port = malloc(sizeof(int));
+    int port;
     int hostfound = 0;    
     char path[MAXLINE];
     char address[MAXLINE];
@@ -68,17 +60,20 @@ void echo(int* arg) {
 
     while ( (n = Rio_readlineb( & rio, buf, MAXLINE)) != 0) {
         strcat(req_header, buf);
-        if( strstr(buf, "HTTP/") != NULL) {
+        if( strstr(buf, "HTTP/") != NULL ) {
+            if( strstr(buf,"GET") == NULL ) {
+                printf("FAIL\n");
+                break;
+            }
             printf(buf);
             sscanf(buf, "%*s %s %*s", address);
-            parse_uri(address, target_addr, path, port);
+            parse_uri(address, target_addr, path, &port);
             }
         else if( strcmp(buf, "\r\n") == 0) {
             rio_t remote_server;
             int clientfd;
-            if( (clientfd = open_clientfd_ts(target_addr, 80) ) < 0)    
-            {
-                printf("FAIL");
+            if( (clientfd = open_clientfd_ts(target_addr, port) ) < 0) {
+                printf("FAIL\n");
                 break;
             }
             Rio_readinitb(&remote_server, clientfd);
@@ -90,8 +85,7 @@ void echo(int* arg) {
                 Rio_writen(connfd, buf, strlen(buf));
                 sscanf(buf, "Content-Length: %d", content_len);
                 printf(buf);
-                }
-            while( strlen(buf) > 2 && strcmp(buf, "\r\n") ) ;
+                } while( strcmp(buf, "\r\n") ) ;
             int* read_len = malloc( sizeof(int) );
             if (*content_len > 0) { //not chunked
                 while (*content_len > MAXLINE) {
@@ -105,18 +99,22 @@ void echo(int* arg) {
                     }
                 }
             else { //chunked
-                while ((*read_len = Rio_readnb(&remote_server, buf, MAXLINE)) > 0)
-                    {
-                    Rio_writen(connfd, buf, *read_len);
-                    }
-
+                while ((*read_len = Rio_readlineb(&remote_server, buf, MAXLINE)) > 0)
+                        {
+                        Rio_writen(connfd, buf, *read_len);
+                        if( !strcmp(buf,"0\r\n")) break;
+                        }
                 }
-            	format_log_entry(log_entry, target_addr, path, *content_len );
-		log_to_file(log_entry);
-		break;
+            Close(clientfd);
+            format_log_entry(log_entry, target_addr, path, *content_len );
+            log_to_file(log_entry);
+            break;
             }
         }
-        close(connfd);
+        Close(connfd);
+        Free(buf);
+        //Free(port);
+        //Free(req_header);
     }
 
 int main(int argc, char ** argv) {
