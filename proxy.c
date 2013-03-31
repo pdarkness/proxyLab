@@ -57,10 +57,10 @@ void echo(int* arg) {
     struct sockaddr_in target_addr[MAXLINE];
     strcpy(req_header,"");
     Rio_readinitb( & rio, connfd);
-    while ( (n = Rio_readlineb( & rio, buf, MAXLINE)) != 0) {
+    while ( (n = rio_readlineb( & rio, buf, MAXLINE)) != 0) {
         strcat(req_header, buf);
         if( strstr(buf, "HTTP/") != NULL ) {
-            if( (strstr(buf, "GET") == NULL)  && printf("jebb\n")  ) {
+            if( (strstr(buf, "GET") == NULL) ) {
                 printf("NOT A GET REQUEST\n");
                 printf(buf);
                 break;
@@ -77,13 +77,13 @@ void echo(int* arg) {
                 printf("%s:%d\n",target_addr,port);
                 break;
             }
-            Rio_readinitb(&remote_server, clientfd);
-            Rio_writen(clientfd, req_header, strlen(req_header));
+            rio_readinitb(&remote_server, clientfd);
+            rio_writen(clientfd, req_header, strlen(req_header));
             int content_len = -1;
             int chunked = 0;
             do {
-                Rio_readlineb(&remote_server, buf, MAXLINE);
-                Rio_writen(connfd, buf, strlen(buf));
+                rio_readlineb(&remote_server, buf, MAXLINE);
+                rio_writen(connfd, buf, strlen(buf));
                 sscanf(buf, "Content-Length: %d", &content_len);
                 if( strstr(buf,"chunked"))
                     chunked  =1;
@@ -91,29 +91,29 @@ void echo(int* arg) {
             int read_len = 0;
             if (content_len > -1) { //not chunked
                 while (content_len > MAXLINE) {
-                    read_len = Rio_readnb(&remote_server, buf, MAXLINE);
-                    Rio_writen(connfd, buf, read_len);
+                    read_len = rio_readnb(&remote_server, buf, MAXLINE);
+                    rio_writen(connfd, buf, read_len);
                     content_len -= MAXLINE;
                     }
                 if (content_len > 0) { //remainder
-                    read_len = Rio_readnb(&remote_server, buf, content_len);
-                    Rio_writen( connfd, buf, content_len );
+                    read_len = rio_readnb(&remote_server, buf, content_len);
+                    rio_writen( connfd, buf, content_len );
                     }
                 }
             else if(chunked) { //chunked
-                while ((read_len = Rio_readlineb(&remote_server, buf, MAXLINE)) > 0)
+                while ((read_len = rio_readlineb(&remote_server, buf, MAXLINE)) > 0)
                         {
-                            Rio_writen(connfd, buf, read_len);
+                            rio_writen(connfd, buf, read_len);
                             if( !strcmp(buf,"0\r\n")) break;
                         }
                 }
-            Close(clientfd);
+            close(clientfd);
             format_log_entry(log_entry, target_addr, path, content_len );
             log_to_file(log_entry);
             break;
             }
         }
-        Close(connfd);
+        close(connfd);
     }
 
 int main(int argc, char ** argv) {
@@ -136,9 +136,9 @@ int main(int argc, char ** argv) {
     while (1) {
         connfd = malloc( sizeof(int));
         clientlen = sizeof(clientaddr);
-        *connfd = Accept(listenfd, (SA * ) & clientaddr,  &clientlen);
+        *connfd = accept(listenfd, (SA * ) & clientaddr,  &clientlen);
         /* Determine the domain name and IP address of the client */
-        hp = Gethostbyaddr((const char * ) & clientaddr.sin_addr.s_addr,
+        hp = gethostbyaddr((const char * ) & clientaddr.sin_addr.s_addr,
                            sizeof(clientaddr.sin_addr.s_addr), AF_INET);
         haddrp = inet_ntoa(clientaddr.sin_addr);
         //printf("server connected to %s (%s)\n", hp->h_name, haddrp);
