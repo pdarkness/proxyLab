@@ -19,6 +19,14 @@ int parse_uri(char * uri, char * target_addr, char * path, int * port);
 void format_log_entry(char * logstring, struct sockaddr_in * sockaddr, char * uri, int size);
 void log_to_file(char * log_entry);
 
+int count_spaces(char* s) {
+  int count = 0;
+  int i;
+  for (i = 0; i < strlen(s);i++)
+    if (s[i] == ' ') count++;
+  return count;
+}
+
 int open_clientfd_ts(char *hostname, int port) {
     int clientfd;
     struct hostent *hp;
@@ -43,8 +51,9 @@ int open_clientfd_ts(char *hostname, int port) {
     return clientfd;
     }
 
-void echo(int connfd) {
-    //Pthread_detach( pthread_self() );
+void echo(int* arg) {
+    int connfd = *arg; 
+    free(arg);
     size_t n;
     char* buf = malloc(sizeof(char) * MAXLINE); 
     rio_t rio;
@@ -59,17 +68,19 @@ void echo(int connfd) {
 
     while ( (n = Rio_readlineb( & rio, buf, MAXLINE)) != 0) {
         strcat(req_header, buf);
-        //sscanf(buf, "Host: %s", target_addr);
         if( strstr(buf, "HTTP/") != NULL) {
             printf(buf);
-            //char address[MAXLINE];
             sscanf(buf, "%*s %s %*s", address);
-            //char path[MAXLINE];
             parse_uri(address, target_addr, path, port);
             }
         else if( strcmp(buf, "\r\n") == 0) {
             rio_t remote_server;
-            int clientfd = open_clientfd_ts(target_addr, 80);
+            int clientfd;
+            if( (clientfd = open_clientfd_ts(target_addr, 80) ) < 0)    
+            {
+                printf("FAIL");
+                break;
+            }
             Rio_readinitb(&remote_server, clientfd);
             Rio_writen(clientfd, req_header, strlen(req_header));
             int* content_len = malloc( sizeof(int) );
@@ -78,6 +89,7 @@ void echo(int connfd) {
                 Rio_readlineb(&remote_server, buf, MAXLINE);
                 Rio_writen(connfd, buf, strlen(buf));
                 sscanf(buf, "Content-Length: %d", content_len);
+                printf(buf);
                 }
             while( strlen(buf) > 2 && strcmp(buf, "\r\n") ) ;
             int* read_len = malloc( sizeof(int) );
@@ -94,20 +106,24 @@ void echo(int connfd) {
                 }
             else { //chunked
                 while ((*read_len = Rio_readnb(&remote_server, buf, MAXLINE)) > 0)
+                    {
                     Rio_writen(connfd, buf, *read_len);
+                    }
+
                 }
             	format_log_entry(log_entry, target_addr, path, *content_len );
 		log_to_file(log_entry);
 		break;
             }
         }
+        close(connfd);
     }
 
 int main(int argc, char ** argv) {
     sem_init(&mutex,0,1);
-    int listenfd,
-        connfd,
-        port;
+    int listenfd;
+    int* connfd;
+    int port;
     unsigned int  clientlen;
     struct sockaddr_in clientaddr;
     struct hostent * hp;
@@ -121,8 +137,9 @@ int main(int argc, char ** argv) {
     port = atoi(argv[1]);
     listenfd = Open_listenfd(port);
     while (1) {
+        connfd = malloc( sizeof(int));
         clientlen = sizeof(clientaddr);
-        connfd = Accept(listenfd, (SA * ) & clientaddr,  &clientlen);
+        *connfd = Accept(listenfd, (SA * ) & clientaddr,  &clientlen);
         /* Determine the domain name and IP address of the client */
         hp = Gethostbyaddr((const char * ) & clientaddr.sin_addr.s_addr,
                            sizeof(clientaddr.sin_addr.s_addr), AF_INET);
@@ -130,7 +147,6 @@ int main(int argc, char ** argv) {
         //printf("server connected to %s (%s)\n", hp->h_name, haddrp);
         echo(connfd);
 	    //Pthread_create(&tid, NULL, (void *)echo, (void *)connfd);
-        Close(connfd);
         }
     printf("done!\n");
     exit(0);
