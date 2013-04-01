@@ -25,7 +25,10 @@ ssize_t Rio_readnb_w(rio_t *rp, void *usrbuf, size_t n)
     ssize_t rc;
 
     if ((rc = rio_readnb(rp, usrbuf, n)) < 0)
-        return (int)NULL;
+    {
+        printf("ERROR: Rio_readnb failed!\n");
+        return rc;
+    }
     return rc;
 }
 
@@ -34,14 +37,20 @@ ssize_t Rio_readlineb_w(rio_t *rp, void *usrbuf, size_t maxlen)
     ssize_t rc;
 
     if ((rc = rio_readlineb(rp, usrbuf, maxlen)) < 0)
-        return (int)NULL;
+    {
+       printf("ERROR: Rio_readlineb failed!\n"); 
+       return rc;
+    }
     return rc;
 }
 
 void Rio_writen_w(int fd, void *usrbuf, size_t n)
 {
     if (rio_writen(fd, usrbuf, n) != n)
+    {
+        printf("ERROR: Rio_writen failed!\n"); 
         return;
+    }
 }
 
 
@@ -54,7 +63,10 @@ int open_clientfd_ts(char *hostname, int port) {
     //P(&mutex);
     /* Fill in the server.s IP address and port */
     if ((hp = gethostbyname(hostname)) == NULL)
+    {
+        printf("ERROR: open_clientfd failed!\n");
         return -2; /* Check h_errno for cause of error */
+    }
     //memcpy(&priv_hp,&hp,sizeof(hp));
     //V(&mutex);
     bzero((char *) &serveraddr, sizeof(serveraddr));
@@ -64,7 +76,10 @@ int open_clientfd_ts(char *hostname, int port) {
     serveraddr.sin_port = htons(port);
     /* Establish a connection with the server */
     if (connect(clientfd, (SA *) &serveraddr, sizeof(serveraddr)) < 0)
-        return -1;
+        {
+            printf("ERROR: open_clientfd failed!\n");
+            return -1;
+        }
     return clientfd;
     }
 
@@ -97,10 +112,8 @@ void handle_request(int* fd) {
             int read_len = 0;
             int chunked = 0;
             int total_size = 0;
-            if( (remote_fd = open_clientfd_ts(target_addr, port) ) < 0) {
-                printf("Open client  fail\n");
+            if( (remote_fd = open_clientfd_ts(target_addr, port) ) < 0)
                 break;
-                }
             rio_readinitb(&remote_rio, remote_fd);
             Rio_writen_w(remote_fd, req_header, strlen(req_header));
             do {
@@ -108,7 +121,7 @@ void handle_request(int* fd) {
                 Rio_writen_w(connfd, buf, strlen(buf));
                 sscanf(buf, "Content-Length: %d", &content_len);
                 if( strstr(buf,"chunked"))
-                    chunked  =1;
+                    chunked  = 1;
                 }
             while( strcmp(buf, "\r\n") ) ;
             if(chunked) {
