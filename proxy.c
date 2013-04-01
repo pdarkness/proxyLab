@@ -22,7 +22,6 @@ void log_to_file(char * log_entry);
 int open_clientfd_ts(char *hostname, int port) {
     int clientfd;
     struct hostent *hp;
-    struct hostent *priv_hp;
     struct sockaddr_in serveraddr;
     if ((clientfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
         return -1; /* Check errno for cause of error */
@@ -43,77 +42,75 @@ int open_clientfd_ts(char *hostname, int port) {
     return clientfd;
     }
 
-void echo(int* arg) {
-    int connfd = *arg; 
-    Free(arg);
+void handle_request(int* fd) {
+    int connfd = *fd;
+    free(fd);
     size_t n;
     rio_t rio;
     int port;
     char path[MAXLINE];
     char address[MAXLINE];
     char log_entry[MAXLINE];
-    char buf[MAXLINE];// = malloc( sizeof(char)*MAXLINE);
-    char req_header[MAXLINE];// = malloc(sizeof(char) * MAXLINE);
-    struct sockaddr_in target_addr[MAXLINE];
+    char buf[MAXLINE];
+    char req_header[MAXLINE];
+    char target_addr[MAXLINE];
     strcpy(req_header,"");
-    Rio_readinitb( & rio, connfd);
+    rio_readinitb( & rio, connfd);
     while ( (n = rio_readlineb( & rio, buf, MAXLINE)) != 0) {
         strcat(req_header, buf);
         if( strstr(buf, "HTTP/") != NULL ) {
-            if( (strstr(buf, "GET") == NULL) ) {
-                printf("NOT A GET REQUEST\n");
-                printf(buf);
+            if( (strstr(buf, "GET") == NULL) ) //This server only handles GET requests
                 break;
-                }
-            //printf(buf);
-            sscanf(buf, "%*s %s %*s", address);
+            sscanf(buf, "%*s %s %*s", address); 
             parse_uri(address, target_addr, path, &port);
             }
         else if( strcmp(buf, "\r\n") == 0) {
-            rio_t remote_server;
-            int clientfd;
-            if( (clientfd = open_clientfd_ts(target_addr, port) ) < 0) {
-                printf("Open client  fail\n");
-                printf("%s:%d\n",target_addr,port);
-                break;
-            }
-            rio_readinitb(&remote_server, clientfd);
-            rio_writen(clientfd, req_header, strlen(req_header));
+            rio_t remote_rio;
+            int remote_fd;
             int content_len = -1;
+            int read_len = 0;
             int chunked = 0;
+            int total_size = 0;
+            if( (remote_fd = open_clientfd_ts(target_addr, port) ) < 0) {
+                printf("Open client  fail\n");
+                break;
+                }
+            rio_readinitb(&remote_rio, remote_fd);
+            rio_writen(remote_fd, req_header, strlen(req_header));
             do {
-                rio_readlineb(&remote_server, buf, MAXLINE);
+                rio_readlineb(&remote_rio, buf, MAXLINE);
                 rio_writen(connfd, buf, strlen(buf));
                 sscanf(buf, "Content-Length: %d", &content_len);
                 if( strstr(buf,"chunked"))
                     chunked  =1;
-                } while( strcmp(buf, "\r\n") ) ;
-            int read_len = 0;
-            if (content_len > -1) { //not chunked
+                }
+            while( strcmp(buf, "\r\n") ) ;
+            if(chunked) {
+                while ( ( (read_len = rio_readlineb(&remote_rio, buf, MAXLINE)) > 0)
+                        && strcmp(buf,"0\r\n")) {
+                    rio_writen(connfd, buf, read_len);
+                    total_size += read_len;
+                    }
+                }
+            else { //not chunked
+                total_size = content_len;
                 while (content_len > MAXLINE) {
-                    read_len = rio_readnb(&remote_server, buf, MAXLINE);
+                    read_len = rio_readnb(&remote_rio, buf, MAXLINE);
                     rio_writen(connfd, buf, read_len);
                     content_len -= MAXLINE;
                     }
-                if (content_len > 0) { //remainder
-                    read_len = rio_readnb(&remote_server, buf, content_len);
+                if (content_len > 0) { //remaining content
+                    read_len = rio_readnb(&remote_rio, buf, content_len);
                     rio_writen( connfd, buf, content_len );
                     }
                 }
-            else if(chunked) { //chunked
-                while ((read_len = rio_readlineb(&remote_server, buf, MAXLINE)) > 0)
-                        {
-                            rio_writen(connfd, buf, read_len);
-                            if( !strcmp(buf,"0\r\n")) break;
-                        }
-                }
-            close(clientfd);
-            format_log_entry(log_entry, target_addr, path, content_len );
-            log_to_file(log_entry);
+            close(remote_fd);
+            format_log_entry(log_entry, (struct sockaddr_in *) target_addr, path, total_size);
             break;
             }
         }
-        close(connfd);
+    log_to_file(log_entry);
+    close(connfd);
     }
 
 int main(int argc, char ** argv) {
@@ -126,7 +123,7 @@ int main(int argc, char ** argv) {
     struct sockaddr_in clientaddr;
     struct hostent * hp;
     char * haddrp;
-    pthread_t tid;
+    //pthread_t tid;
 
     if (argc != 2) {
         fprintf(stderr, "usage: %s <port>\n", argv[0]);
@@ -143,7 +140,7 @@ int main(int argc, char ** argv) {
                            sizeof(clientaddr.sin_addr.s_addr), AF_INET);
         haddrp = inet_ntoa(clientaddr.sin_addr);
         //printf("server connected to %s (%s)\n", hp->h_name, haddrp);
-        echo(connfd);
+        handle_request(connfd);
         //Pthread_create(&tid, NULL, (void *)echo, (void *)connfd);
         }
     printf("done!\n");
@@ -195,21 +192,19 @@ int parse_uri(char * uri, char * hostname, char * pathname, int * port) {
     return 0;
     }
 
-void log_to_file(char * log_entry)
-{
-        FILE *ofp;
-        char *mode = "a";
-        char outputFilename[] = "proxy.log";
+void log_to_file(char * log_entry) {
+    FILE *ofp;
+    char *mode = "a";
+    char outputFilename[] = "proxy.log";
 
-        ofp = fopen(outputFilename, mode);
-        if (ofp == NULL)
-        {
-                fprintf(stderr, "Can't open output file %s!\n", outputFilename);
-                exit(1);
+    ofp = fopen(outputFilename, mode);
+    if (ofp == NULL) {
+        fprintf(stderr, "Can't open output file %s!\n", outputFilename);
+        exit(1);
         }
-        fprintf(ofp, "%s\n", log_entry);
-        fclose(ofp);
-}
+    fprintf(ofp, "%s\n", log_entry);
+    fclose(ofp);
+    }
 
 
 /*
