@@ -19,6 +19,32 @@ int parse_uri(char * uri, char * target_addr, char * path, int * port);
 void format_log_entry(char * logstring, struct sockaddr_in * sockaddr, char * uri, int size);
 void log_to_file(char * log_entry);
 
+
+ssize_t Rio_readnb_w(rio_t *rp, void *usrbuf, size_t n)
+{
+    ssize_t rc;
+
+    if ((rc = rio_readnb(rp, usrbuf, n)) < 0)
+        return (int)NULL;
+    return rc;
+}
+
+ssize_t Rio_readlineb_w(rio_t *rp, void *usrbuf, size_t maxlen)
+{
+    ssize_t rc;
+
+    if ((rc = rio_readlineb(rp, usrbuf, maxlen)) < 0)
+        return (int)NULL;
+    return rc;
+}
+
+void Rio_writen_w(int fd, void *usrbuf, size_t n)
+{
+    if (rio_writen(fd, usrbuf, n) != n)
+        return;
+}
+
+
 int open_clientfd_ts(char *hostname, int port) {
     int clientfd;
     struct hostent *hp;
@@ -56,7 +82,7 @@ void handle_request(int* fd) {
     char target_addr[MAXLINE];
     strcpy(req_header,"");
     rio_readinitb( & rio, connfd);
-    while ( (n = rio_readlineb( & rio, buf, MAXLINE)) != 0) {
+    while ( (n = Rio_readlineb_w( & rio, buf, MAXLINE)) != 0) {
         strcat(req_header, buf);
         if( strstr(buf, "HTTP/") != NULL ) {
             if( (strstr(buf, "GET") == NULL) ) //This server only handles GET requests
@@ -76,32 +102,32 @@ void handle_request(int* fd) {
                 break;
                 }
             rio_readinitb(&remote_rio, remote_fd);
-            rio_writen(remote_fd, req_header, strlen(req_header));
+            Rio_writen_w(remote_fd, req_header, strlen(req_header));
             do {
-                rio_readlineb(&remote_rio, buf, MAXLINE);
-                rio_writen(connfd, buf, strlen(buf));
+                Rio_readlineb_w(&remote_rio, buf, MAXLINE);
+                Rio_writen_w(connfd, buf, strlen(buf));
                 sscanf(buf, "Content-Length: %d", &content_len);
                 if( strstr(buf,"chunked"))
                     chunked  =1;
                 }
             while( strcmp(buf, "\r\n") ) ;
             if(chunked) {
-                while ( ( (read_len = rio_readlineb(&remote_rio, buf, MAXLINE)) > 0)
+                while ( ( (read_len = Rio_readlineb_w(&remote_rio, buf, MAXLINE)) > 0)
                         && strcmp(buf,"0\r\n")) {
-                    rio_writen(connfd, buf, read_len);
+                    Rio_writen_w(connfd, buf, read_len);
                     total_size += read_len;
                     }
                 }
             else { //not chunked
                 total_size = content_len;
                 while (content_len > MAXLINE) {
-                    read_len = rio_readnb(&remote_rio, buf, MAXLINE);
-                    rio_writen(connfd, buf, read_len);
+                    read_len = Rio_readnb_w(&remote_rio, buf, MAXLINE);
+                    Rio_writen_w(connfd, buf, read_len);
                     content_len -= MAXLINE;
                     }
                 if (content_len > 0) { //remaining content
-                    read_len = rio_readnb(&remote_rio, buf, content_len);
-                    rio_writen( connfd, buf, content_len );
+                    read_len = Rio_readnb_w(&remote_rio, buf, content_len);
+                    Rio_writen_w( connfd, buf, content_len );
                     }
                 }
             close(remote_fd);
