@@ -67,7 +67,7 @@ int open_clientfd_ts(char *hostname, int port) {
     /* Fill in the server.s IP address and port */
     if ((hp = gethostbyname(hostname)) == NULL)
     {
-        printf("ERROR: open_clientfd failed!\n");
+        printf("ERROR: open_clientfd, hostname not found: %s!\n",hostname);
         return -2; /* Check h_errno for cause of error */
     }
     memcpy(&priv_hp,&hp,sizeof(hp));
@@ -80,7 +80,7 @@ int open_clientfd_ts(char *hostname, int port) {
     /* Establish a connection with the server */
     if (connect(clientfd, (SA *) &serveraddr, sizeof(serveraddr)) < 0)
         {
-            printf("ERROR: open_clientfd failed!\n");
+            printf("ERROR: open_clientfd, could not connect to server: %s!\n",hostname);
             return -1;
         }
     return clientfd;
@@ -88,8 +88,8 @@ int open_clientfd_ts(char *hostname, int port) {
 
 void handle_request(int* fd) {
     int connfd = *fd;
-    free(fd);
     Pthread_detach(pthread_self());
+    free(fd);
     size_t n;
     rio_t rio;
     int port;
@@ -105,7 +105,10 @@ void handle_request(int* fd) {
         strcat(req_header, buf);
         if( strstr(buf, "HTTP/") != NULL ) {
             if( (strstr(buf, "GET") == NULL) ) //This server only handles GET requests
-                break;
+            {
+                close(connfd);
+                return;
+            }
             sscanf(buf, "%*s %s %*s", address); 
             parse_uri(address, target_addr, path, &port);
             }
@@ -117,7 +120,11 @@ void handle_request(int* fd) {
             int chunked = 0;
             int total_size = 0;
             if( (remote_fd = open_clientfd_ts(target_addr, port) ) < 0)
-                break;
+            {
+                close(connfd);
+                close(remote_fd);
+                return;
+            }
             rio_readinitb(&remote_rio, remote_fd);
             Rio_writen_w(remote_fd, req_header, strlen(req_header));
             do {
@@ -161,6 +168,7 @@ void handle_request(int* fd) {
 int main(int argc, char ** argv) {
     Signal(SIGPIPE, SIG_IGN);
     sem_init(&mutex,0,1);
+    sem_init(&log_mutex,0,1);
     int listenfd;
     int* connfd;
     int port;
