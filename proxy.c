@@ -12,6 +12,8 @@
 
 # include "csapp.h"
 sem_t mutex;
+sem_t log_mutex;
+
 /*
  * Function prototypes
  */
@@ -57,22 +59,23 @@ void Rio_writen_w(int fd, void *usrbuf, size_t n)
 int open_clientfd_ts(char *hostname, int port) {
     int clientfd;
     struct hostent *hp;
+    struct hostent *priv_hp;
     struct sockaddr_in serveraddr;
     if ((clientfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
         return -1; /* Check errno for cause of error */
-    //P(&mutex);
+    P(&mutex);
     /* Fill in the server.s IP address and port */
     if ((hp = gethostbyname(hostname)) == NULL)
     {
         printf("ERROR: open_clientfd failed!\n");
         return -2; /* Check h_errno for cause of error */
     }
-    //memcpy(&priv_hp,&hp,sizeof(hp));
-    //V(&mutex);
+    memcpy(&priv_hp,&hp,sizeof(hp));
+    V(&mutex);
     bzero((char *) &serveraddr, sizeof(serveraddr));
     serveraddr.sin_family = AF_INET;
-    bcopy((char *)hp->h_addr_list[0],
-          (char *)&serveraddr.sin_addr.s_addr, hp->h_length);
+    bcopy((char *)priv_hp->h_addr_list[0],
+          (char *)&serveraddr.sin_addr.s_addr, priv_hp->h_length);
     serveraddr.sin_port = htons(port);
     /* Establish a connection with the server */
     if (connect(clientfd, (SA *) &serveraddr, sizeof(serveraddr)) < 0)
@@ -86,6 +89,7 @@ int open_clientfd_ts(char *hostname, int port) {
 void handle_request(int* fd) {
     int connfd = *fd;
     free(fd);
+    Pthread_detach(pthread_self());
     size_t n;
     rio_t rio;
     int port;
@@ -148,8 +152,10 @@ void handle_request(int* fd) {
             break;
             }
         }
-    log_to_file(log_entry);
-    close(connfd);
+	P(&log_mutex);
+    	log_to_file(log_entry);
+	V(&log_mutex);
+	close(connfd);
     }
 
 int main(int argc, char ** argv) {
@@ -162,7 +168,7 @@ int main(int argc, char ** argv) {
     struct sockaddr_in clientaddr;
     struct hostent * hp;
     char * haddrp;
-    //pthread_t tid;
+    pthread_t tid;
 
     if (argc != 2) {
         fprintf(stderr, "usage: %s <port>\n", argv[0]);
@@ -179,8 +185,8 @@ int main(int argc, char ** argv) {
                            sizeof(clientaddr.sin_addr.s_addr), AF_INET);
         haddrp = inet_ntoa(clientaddr.sin_addr);
         //printf("server connected to %s (%s)\n", hp->h_name, haddrp);
-        handle_request(connfd);
-        //Pthread_create(&tid, NULL, (void *)echo, (void *)connfd);
+        //handle_request(connfd);
+        Pthread_create(&tid, NULL, (void *)handle_request, (void *)connfd);
         }
     printf("done!\n");
     exit(0);
