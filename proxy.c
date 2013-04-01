@@ -117,6 +117,7 @@ void echo(int* arg) {
     }
 
 int main(int argc, char ** argv) {
+    Signal(SIGPIPE, SIG_IGN);
     sem_init(&mutex,0,1);
     int listenfd;
     int* connfd;
