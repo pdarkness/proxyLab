@@ -57,9 +57,8 @@ void Rio_writen_w(int fd, void *usrbuf, size_t n) {
         }
     }
 
-//Thread safe version of open_clientfd that also gives 
-//us the IP address of the remote server
-int open_clientfd_ts(char *hostname, int port, struct sockaddr_in *ip) {
+//Thread safe version of open_clientfd
+int open_clientfd_ts(char *hostname, int port) {
     int clientfd;
     struct hostent *hp;
     struct hostent *priv_hp;
@@ -87,8 +86,6 @@ int open_clientfd_ts(char *hostname, int port, struct sockaddr_in *ip) {
         printf("ERROR: open_clientfd, could not connect to server: %s!\n", hostname);
         return -1;
         }
-    //Gives us the IP address so we can put it in the logfile
-    *ip = serveraddr;
     return clientfd;
     }
 
@@ -102,25 +99,35 @@ void handle_request(int* fd) {
     size_t n;
     rio_t rio;
     int port;
+    struct sockaddr_in ip;
+    socklen_t addrlen = sizeof(ip);
+    if( getpeername(connfd,&ip,&addrlen) == -1)
+    {
+        printf("getpeername Error!\n");
+        return;
+    }
     char buf[MAXLINE];
     char req_header[MAXLINE];
     char target_addr[MAXLINE];
     char url[MAXLINE];
     char log_entry[MAXLINE];
-    struct sockaddr_in ip;
     strcpy(req_header, "");
     rio_readinitb( & rio, connfd);
+
     while ( (n = Rio_readlineb_w( & rio, buf, MAXLINE)) != 0) {
         if( (strstr(buf, " HTTP/1.1") != NULL) || (strstr(buf, " HTTP/1.0") != NULL)  ) {
             if( (strstr(buf, "GET ") == NULL) ) { //This server only handles GET requests
                 Close(connfd);
                 return;
                 }
-            char* req_type = malloc( sizeof(char) * MAXLINE);
-            char* http_type = malloc( sizeof(char) * MAXLINE);
-            char* path = malloc( sizeof(int) * MAXLINE );
+            char* req_type = Malloc( sizeof(char) * MAXLINE);
+            char* http_type = Malloc( sizeof(char) * MAXLINE);
+            char* path = Malloc( sizeof(int) * MAXLINE );
             if( sscanf(buf, "%s %s %s", req_type, url, http_type) != 3) {
                 printf("ERROR: malformed request: %s!\n", buf);
+                Free(req_type);
+                Free(http_type);
+                Free(path);
                 Close(connfd);
                 return;
                 }
@@ -148,7 +155,7 @@ void handle_request(int* fd) {
                 int read_len = 0;
                 int total_size = 0;
 
-                if( (remote_fd = open_clientfd_ts(target_addr, port, &ip) ) < 0) {
+                if( (remote_fd = open_clientfd_ts(target_addr, port) ) < 0) {
                     if(remote_fd == -2)
                         strcpy(buf, "ERROR: Host not found: ");
                     else
@@ -224,7 +231,7 @@ int main(int argc, char ** argv) {
     port = atoi(argv[1]);
     listenfd = Open_listenfd(port);
     while (1) {
-        connfd = malloc( sizeof(int));
+        connfd = Malloc( sizeof(int));
         clientlen = sizeof(clientaddr);
         *connfd = accept(listenfd, (SA * ) & clientaddr,  &clientlen);
         /* Determine the domain name and IP address of the client */
